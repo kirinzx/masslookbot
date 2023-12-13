@@ -1,21 +1,28 @@
 from classes.storywatcher import StoryWatcher
-from handlers import main as bot_main
+#from handlers import main as bot_main
 import sqlite3, asyncio
 
 def create_tables():
     con = sqlite3.connect('masslook.db')
     cur = con.cursor()
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS admins(id INTEGER PRIMARY KEY, nickname TEXT NOT NULL UNIQUE, adminId TEXT NOT NULL UNIQUE);"
+        "CREATE TABLE IF NOT EXISTS admins(id INTEGER PRIMARY KEY, nickname TEXT NOT NULL UNIQUE,\
+        adminId TEXT NOT NULL UNIQUE);"
     )
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, phoneNumber TEXT NOT NULL UNIQUE, app_id TEXT NOT NULL UNIQUE, app_hash TEXT NOT NULL UNIQUE, proxy TEXT, stories_watched INTEGER NOT NULL DEFAULT 0);"
+        "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, phoneNumber TEXT NOT NULL UNIQUE,\
+        app_id TEXT NOT NULL UNIQUE, app_hash TEXT NOT NULL UNIQUE, proxy TEXT, stories_watched INTEGER NOT NULL DEFAULT 0);"
     )
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS chat_users(id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES user(id))"
+        "CREATE TABLE IF NOT EXISTS chats(id INTEGER PRIMARY KEY, nickname TEXT NOT NULL, chat_id INTEGER NOT NULL UNIQUE, parsed INTEGER NOT NULL default 0)"
     )
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS parsed_users(user_id INTEGER PRIMARY KEY, stories_max_id TEXT NOT NULL, chat_id INTEGER NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS chat_users(id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL,\
+        user_id INTEGER NOT NULL, FOREIGN KEY (chat_id) REFERENCES chats(id), FOREIGN KEY (user_id) REFERENCES users(id))"
+    )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS parsed_users(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL,\
+        stories_max_id INTEGER NOT NULL, chat_id INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id));"
     )
     con.commit()
     con.close()

@@ -11,3 +11,7 @@ class UserForm(StatesGroup):
     proxy = State()
     code = State()
     password = State()
+
+class ChatForm(StatesGroup):
+    chat_link = State()
+    nickname = State()
