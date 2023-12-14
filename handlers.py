@@ -13,11 +13,12 @@ from states import *
 from classes.paginator import Paginator
 from classes.user import User
 from classes.storywatcher import StoryWatcher, story_watchers
+import logging
 
 
 bot = Bot(token=getSetting('bot_token'))
 storage = MemoryStorage()
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=storage)
 
 client = None
 user = None
@@ -26,7 +27,6 @@ user_phone_number = None
 
 keyboardMain = ReplyKeyboardMarkup(keyboard=[
     [r'Добавить "админа"',"Добавить аккаунт для масслукинга"],
-    ["Как я работаю?",'Изменить настройки'],
     [r'Посмотреть "админов"',"Посмотреть добавленные аккаунты"],
 ],resize_keyboard=True)
 
@@ -111,7 +111,7 @@ async def process_callback_deleteAdmin(callback_query: types.CallbackQuery):
         await bot.send_message(callback_query.from_user.id, text="Непридвиденная ошибка!", reply_markup=keyboardMain)
 
 
-@dp.callback_query_handler(Text(equals="Посмотреть добавленные аккаунты"))
+@dp.message_handler(Text(equals="Посмотреть добавленные аккаунты"))
 async def process_get_accounts(message: types.Message):
     try:
         async with aiosqlite.connect("masslook.db") as db:
@@ -134,29 +134,33 @@ async def process_get_accounts(message: types.Message):
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Настроить аккаунт'))
 async def process_callback_user_settings(callback_query: types.CallbackQuery):
-    user_chosen_phone_number = callback_query.data.split(" ")[-1]
-    user_chosen_id = callback_query.data.split(" ")[-2]
-    watcher = story_watchers.get(user_chosen_phone_number)
-    settingsInlineKeyboard = InlineKeyboardMarkup()
+    try:
+        user_chosen_phone_number = callback_query.data.split(" ")[-1]
+        user_chosen_id = callback_query.data.split(" ")[-2]
+        watcher = story_watchers.get(user_chosen_phone_number)
+        settingsInlineKeyboard = InlineKeyboardMarkup()
 
-    if watcher.running:
-        run_pause = InlineKeyboardButton(text='Пауза',callback_data=f"turn off {user_chosen_phone_number}")
-    else:
-        run_pause = InlineKeyboardButton(text='Пуск',callback_data=f"turn on {user_chosen_phone_number}")
+        if watcher.running:
+            run_pause = InlineKeyboardButton(text='Пауза',callback_data=f"turn off {user_chosen_phone_number}")
+        else:
+            run_pause = InlineKeyboardButton(text='Пуск',callback_data=f"turn on {user_chosen_phone_number}")
 
-    settingsInlineKeyboard.add(
-        InlineKeyboardButton(text='Чаты',callback_data=f"Посмотреть чаты {user_chosen_id}"),
-        InlineKeyboardButton(text='Добавить чат',callback_data=f"Добавить чат {user_chosen_phone_number}")
-    )
-    settingsInlineKeyboard.add(
-        InlineKeyboardButton(text='Удалить аккаунт',callback_data=f"Удалить аккаунт {user_chosen_id}"),
-        run_pause
-    )
+        settingsInlineKeyboard.add(
+            InlineKeyboardButton(text='Чаты',callback_data=f"Посмотреть чаты {user_chosen_id} {user_chosen_phone_number}"),
+            InlineKeyboardButton(text='Добавить чат',callback_data=f"Добавить чат {user_chosen_phone_number}")
+        )
+        settingsInlineKeyboard.add(
+            InlineKeyboardButton(text='Удалить аккаунт',callback_data=f"Удалить аккаунт {user_chosen_phone_number}"),
+            run_pause
+        )
 
-    await callback_query.message.answer(
-        text=f'Выбранный аккаунт: {user_chosen_phone_number}.\n Просмотрено историй: {watcher.stories_watched}',
-        reply_markup=settingsInlineKeyboard
-    )
+        await callback_query.message.answer(
+            text=f'Выбранный аккаунт: {user_chosen_phone_number}.\n Просмотрено историй: {watcher.stories_watched}',
+            reply_markup=settingsInlineKeyboard
+        )
+    except Exception as e:
+        await callback_query.message.answer('Непридвиденная ошибка', reply_markup=keyboardMain)
+        logging.error(f'error in user settings. {e}')
     await callback_query.message.delete()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('turn'))
@@ -164,35 +168,43 @@ async def process_turn_user(callback_query: types.CallbackQuery):
     callback_split_data = callback_query.data.split(" ")
     user_chosen = callback_split_data[-1]
     action = callback_split_data[1]
-    watcher = story_watchers.get(user_chosen)
-    if action == 'on':
-        watcher.running = True
+    watcher = story_watchers.get(user_chosen, None)
+    if watcher is not None:
+        if action == 'on':
+            watcher.running = True
+        else:
+            watcher.running = False
+        await callback_query.message.answer("Готово!", reply_markup=keyboardMain)
     else:
-        watcher.running = False
-    await callback_query.message.answer("Готово!", reply_markup=keyboardMain)
+        await callback_query.message.answer("Аккаунт не найден!", reply_markup=keyboardMain)
     await callback_query.message.delete()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Посмотреть чаты'))
 async def process_callback_get_chats(callback_query: types.CallbackQuery):
-    user_chosen = callback_query.data.split(" ")[-1]
-    async with aiosqlite.connect('masslook.db') as db:
-        async with db.execute(
-            "SELECT chat_users.id, chat_users.nickname FROM chats JOIN chat_users ON\
-            chat_users.chat_id = chats.id WHERE user_chosen_phone_number.user_id=?;",
-            (user_chosen,)
-        ) as cur:
-            chats = await cur.fetchall()
-    if len(chats) > 0:
-        accountsButtons = InlineKeyboardMarkup()
-        for account in chats:
-            accountsButtons.add(
-                InlineKeyboardButton(text=account[0],callback_data=f"view {account[1]}"),
-                InlineKeyboardButton(text="Настройки",callback_data=f"Удалить чат {account[0]} {user_chosen}")
-            )
-        paginator = Paginator(accountsButtons,size=5,dp=dp)
-        await callback_query.message.answer(text=f"Добавленные чаты аккаунта {user_chosen}",reply_markup=paginator())
-    else:
-        await callback_query.message.answer(text="Чатов нет...",reply_markup=keyboardMain)
+    try:
+        user_chosen_phone_number = callback_query.data.split(" ")[-1]
+        user_chosen = callback_query.data.split(" ")[-2]
+        async with aiosqlite.connect('masslook.db') as db:
+            async with db.execute(
+                "SELECT chats.id, chats.nickname FROM chats JOIN chat_users ON\
+                chat_users.chat_id = chats.id WHERE chat_users.user_id=?;",
+                (user_chosen,)
+            ) as cur:
+                chats = await cur.fetchall()
+        if len(chats) > 0:
+            accountsButtons = InlineKeyboardMarkup()
+            for account in chats:
+                accountsButtons.add(
+                    InlineKeyboardButton(text=account[1],callback_data=f"view {account[1]}"),
+                    InlineKeyboardButton(text="Удалить",callback_data=f"Удалить чат {account[0]} {user_chosen}")
+                )
+            paginator = Paginator(accountsButtons,size=5,dp=dp)
+            await callback_query.message.answer(text=f"Добавленные чаты аккаунта {user_chosen_phone_number}",reply_markup=paginator())
+        else:
+            await callback_query.message.answer(text="Чатов нет...",reply_markup=keyboardMain)
+    except Exception as e:
+        await callback_query.message.answer('Непридвиденная ошибка', reply_markup=keyboardMain)
+        logging.error(f'error in get chats. {e}')
     await callback_query.message.delete()
 
 
@@ -212,12 +224,17 @@ async def process_chat_link(message: types.Message, state: FSMContext):
     await message.answer('Напишите пометку для чата. ВНИМАНИЕ! Если такой чат был добавлен ранее для другого аккаунта, то пометка возьмется такая же',reply_markup=keyboardCancel)
 
 @dp.message_handler(state=ChatForm.nickname)
-async def process_chat_link(message: types.Message, state: FSMContext):
+async def process_chat_nickname(message: types.Message, state: FSMContext):
     global user_phone_number
-    async with state.proxy() as data:
-        watcher = story_watchers.get(user_phone_number)
-        await watcher.save_chat(data['chat_link'],message.text.strip())
-    await message.answer('Готово!',reply_markup=keyboardCancel)
+    try:
+        async with state.proxy() as data:
+            watcher = story_watchers.get(user_phone_number)
+            watcher.loop.create_task(watcher.save_chat(data['chat_link'],message.text.strip()))
+        await message.answer('Готово!',reply_markup=keyboardMain)
+    except Exception as e:
+        await message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
+        logging.error(f'error in chat nickname save. {e}')
+    await state.finish()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Удалить чат'))
 async def process_callback_delete_chat(callback_query: types.CallbackQuery):
@@ -230,8 +247,10 @@ async def process_callback_delete_chat(callback_query: types.CallbackQuery):
 
         await callback_query.message.answer(text=f"Готово!",reply_markup=keyboardMain)
 
-    except:
+    except Exception as e:
         await callback_query.message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
+        logging.error(f'error in delete chat. {e}')
+    await callback_query.message.delete()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Удалить аккаунт'))
 async def process_callback_deleteUser(callback_query: types.CallbackQuery):
@@ -239,14 +258,12 @@ async def process_callback_deleteUser(callback_query: types.CallbackQuery):
     try:
         watcher = story_watchers.get(userToDelete)
         await watcher.stop()
-        async with aiosqlite.connect("masslook.db") as db:
-            await db.execute("DELETE FROM users WHERE id=?;",(userToDelete,))
-            await db.commit()
         await removeSessionFile(userToDelete)
 
         await callback_query.message.answer(text=f"Готово! Пользователь {userToDelete} удалён!",reply_markup=keyboardMain)
 
-    except:
+    except Exception as e:
+        logging.error(f'error in delete acc. {e}')
         await callback_query.message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
     await callback_query.message.delete()
 
@@ -280,12 +297,12 @@ async def process_app_hash(message: types.Message, state: FSMContext):
     await message.reply("Напишите прокси SOCKS5 в формате ip:port:login:password (если не хотите его использовать, то напишите прочерк(-))",reply_markup=keyboardCancel)
 
 @dp.message_handler(state=UserForm.proxy)
-async def process_password(message: types.Message, state: FSMContext):
+async def process_proxy(message: types.Message, state: FSMContext):
     try:
         global client, user, loop
         async with state.proxy() as data:
-            if proxy != "-":
-                split_proxy = proxy.split(':')
+            if message.text.strip() != "-":
+                split_proxy = message.text.strip().split(':')
                 proxy = (python_socks.ProxyType.SOCKS5,split_proxy[0],split_proxy[1],True,split_proxy[2],split_proxy[3])
             else:
                 proxy = None
@@ -303,7 +320,7 @@ async def process_password(message: types.Message, state: FSMContext):
         else:
             await saveUser(message,state)
     except Exception as e:
-        print(f'Error!{e}')
+        logging.error(f'error in process proxy. {e}')
         await removeSessionFile(user.phoneNumber)
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
         await state.finish()
@@ -319,7 +336,8 @@ async def process_code(message: types.Message, state: FSMContext):
             data["code"] = message.text.strip()
         await UserForm.next()
         await message.answer(text="Введите пароль от 2FA",reply_markup=keyboardCancel)
-    except:
+    except Exception as e:
+        logging.error(f'error in process code. {e}')
         await removeSessionFile(user.phoneNumber)
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
         await state.finish()
@@ -328,10 +346,10 @@ async def process_code(message: types.Message, state: FSMContext):
 async def process_password(message: types.Message, state: FSMContext):
     password = message.text.strip()
     try:
-        
         await client.sign_in(password=password)
         await saveUser(message,state)
-    except:
+    except Exception as e:
+        logging.error(f'Error in 2fa. {e}')
         await removeSessionFile(user.phoneNumber)
         await state.finish()
         await message.answer("Непридвиденная ошибка!",reply_markup=keyboardMain)
@@ -352,10 +370,16 @@ async def saveUser(message: types.Message,state: FSMContext):
         await removeSessionFile(user.phoneNumber)
         await message.answer("Ошибка!Аккаунт с такими данными уже существует!", reply_markup=keyboardMain)
         await state.finish()
+    except Exception as e:
+        logging.error(f'error in save user. {e}')
+        await removeSessionFile(user.phoneNumber)
+        await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
+        await state.finish()
 
 async def removeSessionFile(sessionName):
     try:
         os.remove(f"sessions/{sessionName}.session")
+        os.remove(f"sessions/{sessionName}.session-journal")
     except:
         pass
 
@@ -363,6 +387,6 @@ def main(loop_):
     global loop
     loop = loop_
     asyncio.set_event_loop(loop)
-    dp.middleware.setup(AdminMiddleware)
+    dp.middleware.setup(AdminMiddleware())
     executor.start_polling(dp, skip_updates=True,loop=loop)
     

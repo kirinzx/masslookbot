@@ -1,6 +1,6 @@
 from classes.storywatcher import StoryWatcher
-#from handlers import main as bot_main
-import sqlite3, asyncio
+from handlers import main as bot_main
+import sqlite3, asyncio, logging
 
 def create_tables():
     con = sqlite3.connect('masslook.db')
@@ -35,9 +35,21 @@ def set_watchers(loop):
         StoryWatcher(user[0],user[1],user[2],user[3],user[4],loop,user[5])
     con.close()
 
+def create_admins():
+    con = sqlite3.connect('masslook.db')
+    cur = con.cursor()
+    with open('admins.txt') as file:
+        admins = file.readlines()
+        for i in range(len(admins)):
+            admins[i] = admins[i].split(' ')
+        cur.executemany("INSERT OR IGNORE INTO admins(nickname, adminId) VALUES (?,?);",admins)
+        con.commit()
+        con.close()
 
 def main():
+    logging.basicConfig(level=logging.ERROR)
     create_tables()
+    create_admins()
     loop = asyncio.get_event_loop()
     set_watchers(loop)
     bot_main(loop)

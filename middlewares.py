@@ -16,7 +16,7 @@ class AdminMiddleware(BaseMiddleware):
 
 
     async def checkForAdmin(self, userId: int):
-        async with aiosqlite.connect("accounts.db") as db:
+        async with aiosqlite.connect("masslook.db") as db:
             async with db.execute("SELECT adminId FROM admins") as cur:
                 admins = [admin[0] for admin in await cur.fetchall()]
         if not userId in admins:
