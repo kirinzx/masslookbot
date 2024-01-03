@@ -6,7 +6,12 @@ from aiogram.types.inline_keyboard import InlineKeyboardMarkup, InlineKeyboardBu
 from aiogram.dispatcher.filters import Text
 import telethon
 from telethon import TelegramClient
-import asyncio, aiosqlite, python_socks, async_timeout, socks, os
+import asyncio
+import aiosqlite
+import python_socks
+import async_timeout
+import socks
+import os
 from tools import getSetting
 from middlewares import AdminMiddleware
 from states import *
@@ -26,17 +31,19 @@ loop = None
 user_phone_number = None
 
 keyboardMain = ReplyKeyboardMarkup(keyboard=[
-    [r'Добавить "админа"',"Добавить аккаунт для масслукинга"],
-    [r'Посмотреть "админов"',"Посмотреть добавленные аккаунты"],
-],resize_keyboard=True)
+    [r'Добавить "админа"', "Добавить аккаунт для масслукинга"],
+    [r'Посмотреть "админов"', "Посмотреть добавленные аккаунты"],
+], resize_keyboard=True)
 
 keyboardCancel = ReplyKeyboardMarkup(keyboard=[
     ["Отменить"],
 ])
 
+
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(text='Выберите опцию', reply_markup=keyboardMain)
+
 
 @dp.message_handler(Text(equals='Отменить'), state='*')
 async def cancel_handler(message: types.Message, state: FSMContext):
@@ -46,38 +53,42 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     await state.finish()
     await message.reply('Отменено', reply_markup=keyboardMain)
 
+
 @dp.message_handler(Text(equals='Добавить "админа"'))
-async def addAdmin(message:types.Message):
+async def addAdmin(message: types.Message):
     await AdminForm.nickname.set()
-    await message.answer("Напишите никнейм для этого аккаунта",reply_markup=keyboardCancel)
+    await message.answer("Напишите никнейм для этого аккаунта", reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=AdminForm.nickname)
 async def process_phoneNumberAdmin(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['nickname'] = message.text.strip()
     await AdminForm.next()
-    await message.reply("Напишите id аккаунта",reply_markup=keyboardCancel)
+    await message.reply("Напишите id аккаунта", reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=AdminForm.adminId)
-async def process_adminId(message:types.Message,state:FSMContext):
+async def process_adminId(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['adminId'] = message.text.strip()
 
     async with aiosqlite.connect("masslook.db")as db:
         try:
             if data["adminId"].isdigit():
-                await db.execute("INSERT INTO admins(nickname,adminId) VALUES(?,?);",(data["nickname"],data["adminId"]))
+                await db.execute("INSERT INTO admins(nickname,adminId) VALUES(?,?);", (data["nickname"], data["adminId"]))
                 await db.commit()
                 await message.reply("Готово!", reply_markup=keyboardMain)
             else:
                 await message.reply("Некорректные данные!", reply_markup=keyboardMain)
         except aiosqlite.IntegrityError:
-            await message.reply("Админ с такими данными уже сущетсвует!",reply_markup=keyboardMain)
+            await message.reply("Админ с такими данными уже сущетсвует!", reply_markup=keyboardMain)
         finally:
             await state.finish()
 
+
 @dp.message_handler(Text(equals=r'Посмотреть "админов"'))
-async def getAdmins(message:types.Message):
+async def getAdmins(message: types.Message):
     async with aiosqlite.connect("masslook.db")as db:
         async with db.execute("SELECT nickname,adminId FROM admins;")as cur:
             admins = await cur.fetchall()
@@ -86,16 +97,19 @@ async def getAdmins(message:types.Message):
         for admin in admins:
             if admin[1] == str(message.from_user.id):
                 adminsButtons.add(InlineKeyboardButton(text=str(admin[0]), callback_data=f"view {admin[0]}"),
-                                  InlineKeyboardButton(text=str(admin[1]), callback_data=f"view {admin[1]}"),
+                                  InlineKeyboardButton(
+                                      text=str(admin[1]), callback_data=f"view {admin[1]}"),
                                   InlineKeyboardButton(text="-", callback_data=f"fake-delete {admin[0]}"))
             else:
                 adminsButtons.add(InlineKeyboardButton(text=str(admin[0]), callback_data=f"view {admin[0]}"),
-                                  InlineKeyboardButton(text=str(admin[1]),callback_data=f"view {admin[1]}"),
+                                  InlineKeyboardButton(
+                                      text=str(admin[1]), callback_data=f"view {admin[1]}"),
                                   InlineKeyboardButton(text="Удалить", callback_data=f"Удалить админа {admin[0]}"))
         paginator = Paginator(adminsButtons, size=5, dp=dp)
-        await message.answer(text="Добавленные админы. Чтобы удалить, нажмите на кнопку удаления",reply_markup=paginator())
+        await message.answer(text="Добавленные админы. Чтобы удалить, нажмите на кнопку удаления", reply_markup=paginator())
     else:
         await message.answer(text="Админов нет...", reply_markup=keyboardMain)
+
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Удалить админа'))
 async def process_callback_deleteAdmin(callback_query: types.CallbackQuery):
@@ -121,13 +135,15 @@ async def process_get_accounts(message: types.Message):
             accountsButtons = InlineKeyboardMarkup()
             for account in accounts:
                 accountsButtons.add(
-                    InlineKeyboardButton(text=str(account[0]),callback_data=f"view {account[0]}"),
-                    InlineKeyboardButton(text="Настройки",callback_data=f"Настроить аккаунт {account[1]} {account[0]}")
+                    InlineKeyboardButton(
+                        text=str(account[0]), callback_data=f"view {account[0]}"),
+                    InlineKeyboardButton(
+                        text="Настройки", callback_data=f"Настроить аккаунт {account[1]} {account[0]}")
                 )
-            paginator = Paginator(accountsButtons,size=5,dp=dp)
-            await message.answer(text="Добавленные аккаунты",reply_markup=paginator())
+            paginator = Paginator(accountsButtons, size=5, dp=dp)
+            await message.answer(text="Добавленные аккаунты", reply_markup=paginator())
         else:
-            await message.answer(text="Аккаунтов нет...",reply_markup=keyboardMain)
+            await message.answer(text="Аккаунтов нет...", reply_markup=keyboardMain)
     except:
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
 
@@ -141,16 +157,21 @@ async def process_callback_user_settings(callback_query: types.CallbackQuery):
         settingsInlineKeyboard = InlineKeyboardMarkup()
 
         if watcher.running:
-            run_pause = InlineKeyboardButton(text='Пауза',callback_data=f"turn off {user_chosen_phone_number}")
+            run_pause = InlineKeyboardButton(
+                text='Пауза', callback_data=f"turn off {user_chosen_phone_number}")
         else:
-            run_pause = InlineKeyboardButton(text='Пуск',callback_data=f"turn on {user_chosen_phone_number}")
+            run_pause = InlineKeyboardButton(
+                text='Пуск', callback_data=f"turn on {user_chosen_phone_number}")
 
         settingsInlineKeyboard.add(
-            InlineKeyboardButton(text='Чаты',callback_data=f"Посмотреть чаты {user_chosen_id} {user_chosen_phone_number}"),
-            InlineKeyboardButton(text='Добавить чат',callback_data=f"Добавить чат {user_chosen_phone_number}")
+            InlineKeyboardButton(
+                text='Чаты', callback_data=f"Посмотреть чаты {user_chosen_id} {user_chosen_phone_number}"),
+            InlineKeyboardButton(
+                text='Добавить чат', callback_data=f"Добавить чат {user_chosen_phone_number}")
         )
         settingsInlineKeyboard.add(
-            InlineKeyboardButton(text='Удалить аккаунт',callback_data=f"Удалить аккаунт {user_chosen_phone_number}"),
+            InlineKeyboardButton(
+                text='Удалить аккаунт', callback_data=f"Удалить аккаунт {user_chosen_phone_number}"),
             run_pause
         )
 
@@ -162,6 +183,7 @@ async def process_callback_user_settings(callback_query: types.CallbackQuery):
         await callback_query.message.answer('Непридвиденная ошибка', reply_markup=keyboardMain)
         logging.error(f'error in user settings. {e}')
     await callback_query.message.delete()
+
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('turn'))
 async def process_turn_user(callback_query: types.CallbackQuery):
@@ -179,6 +201,7 @@ async def process_turn_user(callback_query: types.CallbackQuery):
         await callback_query.message.answer("Аккаунт не найден!", reply_markup=keyboardMain)
     await callback_query.message.delete()
 
+
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Посмотреть чаты'))
 async def process_callback_get_chats(callback_query: types.CallbackQuery):
     try:
@@ -195,13 +218,15 @@ async def process_callback_get_chats(callback_query: types.CallbackQuery):
             accountsButtons = InlineKeyboardMarkup()
             for account in chats:
                 accountsButtons.add(
-                    InlineKeyboardButton(text=account[1],callback_data=f"view {account[1]}"),
-                    InlineKeyboardButton(text="Удалить",callback_data=f"Удалить чат {account[0]} {user_chosen}")
+                    InlineKeyboardButton(
+                        text=account[1], callback_data=f"view {account[1]}"),
+                    InlineKeyboardButton(
+                        text="Удалить", callback_data=f"Удалить чат {account[0]} {user_chosen}")
                 )
-            paginator = Paginator(accountsButtons,size=5,dp=dp)
-            await callback_query.message.answer(text=f"Добавленные чаты аккаунта {user_chosen_phone_number}",reply_markup=paginator())
+            paginator = Paginator(accountsButtons, size=5, dp=dp)
+            await callback_query.message.answer(text=f"Добавленные чаты аккаунта {user_chosen_phone_number}", reply_markup=paginator())
         else:
-            await callback_query.message.answer(text="Чатов нет...",reply_markup=keyboardMain)
+            await callback_query.message.answer(text="Чатов нет...", reply_markup=keyboardMain)
     except Exception as e:
         await callback_query.message.answer('Непридвиденная ошибка', reply_markup=keyboardMain)
         logging.error(f'error in get chats. {e}')
@@ -216,12 +241,14 @@ async def process_callback_add_chat(callback_query: types.CallbackQuery):
     await callback_query.message.answer('Напишите ссылку на чат', reply_markup=keyboardCancel)
     await callback_query.message.delete()
 
+
 @dp.message_handler(state=ChatForm.chat_link)
 async def process_chat_link(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['chat_link'] = message.text.strip()
     await ChatForm.next()
-    await message.answer('Напишите пометку для чата. ВНИМАНИЕ! Если такой чат был добавлен ранее для другого аккаунта, то пометка возьмется такая же',reply_markup=keyboardCancel)
+    await message.answer('Напишите пометку для чата. ВНИМАНИЕ! Если такой чат был добавлен ранее для другого аккаунта, то пометка возьмется такая же', reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=ChatForm.nickname)
 async def process_chat_nickname(message: types.Message, state: FSMContext):
@@ -229,12 +256,14 @@ async def process_chat_nickname(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
             watcher = story_watchers.get(user_phone_number)
-            watcher.loop.create_task(watcher.save_chat(data['chat_link'],message.text.strip()))
-        await message.answer('Готово!',reply_markup=keyboardMain)
+            watcher.loop.create_task(watcher.save_chat(
+                data['chat_link'], message.text.strip()))
+        await message.answer('Готово!', reply_markup=keyboardMain)
     except Exception as e:
         await message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
         logging.error(f'error in chat nickname save. {e}')
     await state.finish()
+
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Удалить чат'))
 async def process_callback_delete_chat(callback_query: types.CallbackQuery):
@@ -242,15 +271,16 @@ async def process_callback_delete_chat(callback_query: types.CallbackQuery):
     chat_to_delete = callback_query.data.split(" ")[-2]
     try:
         async with aiosqlite.connect("masslook.db") as db:
-            await db.execute("DELETE FROM chat_users WHERE user_id=? AND chat_id=?;",(user,chat_to_delete))
+            await db.execute("DELETE FROM chat_users WHERE user_id=? AND chat_id=?;", (user, chat_to_delete))
             await db.commit()
 
-        await callback_query.message.answer(text=f"Готово!",reply_markup=keyboardMain)
+        await callback_query.message.answer(text=f"Готово!", reply_markup=keyboardMain)
 
     except Exception as e:
         await callback_query.message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
         logging.error(f'error in delete chat. {e}')
     await callback_query.message.delete()
+
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('Удалить аккаунт'))
 async def process_callback_deleteUser(callback_query: types.CallbackQuery):
@@ -260,25 +290,27 @@ async def process_callback_deleteUser(callback_query: types.CallbackQuery):
         await watcher.stop()
         await removeSessionFile(userToDelete)
 
-        await callback_query.message.answer(text=f"Готово! Пользователь {userToDelete} удалён!",reply_markup=keyboardMain)
+        await callback_query.message.answer(text=f"Готово! Пользователь {userToDelete} удалён!", reply_markup=keyboardMain)
 
     except Exception as e:
         logging.error(f'error in delete acc. {e}')
         await callback_query.message.answer(text="Непридвиденная ошибка!", reply_markup=keyboardMain)
     await callback_query.message.delete()
 
+
 @dp.message_handler(Text(equals="Добавить аккаунт для масслукинга"))
 async def addAccount(message: types.Message):
     await UserForm.phoneNumber.set()
-    await message.answer(text="Напишите номер телефона(с кодом страны)",reply_markup=keyboardCancel)
+    await message.answer(text="Напишите номер телефона(с кодом страны)", reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=UserForm.phoneNumber)
 async def process_nickname(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['phoneNumber'] = message.text.strip().replace(' ','')
+        data['phoneNumber'] = message.text.strip().replace(' ', '')
 
     await UserForm.next()
-    await message.reply("Напишите api_id",reply_markup=keyboardCancel)
+    await message.reply("Напишите api_id", reply_markup=keyboardCancel)
 
 
 @dp.message_handler(state=UserForm.app_id)
@@ -287,14 +319,16 @@ async def process_app_id(message: types.Message, state: FSMContext):
         data['app_id'] = message.text.strip()
 
     await UserForm.next()
-    await message.reply("Напишите api_hash",reply_markup=keyboardCancel)
+    await message.reply("Напишите api_hash", reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=UserForm.app_hash)
 async def process_app_hash(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['app_hash'] = message.text.strip()
     await UserForm.next()
-    await message.reply("Напишите прокси SOCKS5 в формате ip:port:login:password (если не хотите его использовать, то напишите прочерк(-))",reply_markup=keyboardCancel)
+    await message.reply("Напишите прокси SOCKS5 в формате ip:port:login:password (если не хотите его использовать, то напишите прочерк(-))", reply_markup=keyboardCancel)
+
 
 @dp.message_handler(state=UserForm.proxy)
 async def process_proxy(message: types.Message, state: FSMContext):
@@ -302,14 +336,18 @@ async def process_proxy(message: types.Message, state: FSMContext):
         global client, user, loop
         async with state.proxy() as data:
             if message.text.strip() != "-":
-                split_proxy = message.text.strip().split(':')
-                proxy = (python_socks.ProxyType.SOCKS5,split_proxy[0],split_proxy[1],True,split_proxy[2],split_proxy[3])
+                db_proxy = message.text.strip()
+                split_proxy = db_proxy.split(':')
+                proxy = (python_socks.ProxyType.SOCKS5,
+                         split_proxy[0], split_proxy[1], True, split_proxy[2], split_proxy[3])
             else:
                 proxy = None
-            user = User(data["phoneNumber"], data["app_id"], data["app_hash"], proxy, loop)
+                db_proxy = None
+            user = User(data["phoneNumber"], data["app_id"],
+                        data["app_hash"], db_proxy, loop)
 
         client = TelegramClient(session=f'sessions/{user.phoneNumber}', api_id=int(user.api_id),
-                                    api_hash=user.api_hash,app_version="4.0",system_version="IOS 14",device_model="iPhone 14",loop=loop)
+                                api_hash=user.api_hash, app_version="4.0", system_version="IOS 14", device_model="iPhone 14", loop=loop)
         if user.proxy is not None:
             client.set_proxy(proxy)
         await client.connect()
@@ -318,52 +356,56 @@ async def process_proxy(message: types.Message, state: FSMContext):
             await message.answer("Введите код, который пришел вам в телеграм. ВНИМАНИЕ! Поставьте в любом месте нижнее подчеркивание(_), иначе придется проходить все этапы регистрации опять!", reply_markup=keyboardCancel)
             await UserForm.next()
         else:
-            await saveUser(message,state)
+            await saveUser(message, state)
     except Exception as e:
         logging.error(f'error in process proxy. {e}')
         await removeSessionFile(user.phoneNumber)
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
         await state.finish()
 
+
 @dp.message_handler(state=UserForm.code)
 async def process_code(message: types.Message, state: FSMContext):
     global user
     try:
-        await client.sign_in(user.phoneNumber,message.text.strip().replace("_",""))
+        await client.sign_in(user.phoneNumber, message.text.strip().replace("_", ""))
         await saveUser(message, state)
     except telethon.errors.SessionPasswordNeededError:
         async with state.proxy() as data:
             data["code"] = message.text.strip()
         await UserForm.next()
-        await message.answer(text="Введите пароль от 2FA",reply_markup=keyboardCancel)
+        await message.answer(text="Введите пароль от 2FA", reply_markup=keyboardCancel)
     except Exception as e:
         logging.error(f'error in process code. {e}')
         await removeSessionFile(user.phoneNumber)
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
         await state.finish()
 
+
 @dp.message_handler(state=UserForm.password)
 async def process_password(message: types.Message, state: FSMContext):
     password = message.text.strip()
     try:
         await client.sign_in(password=password)
-        await saveUser(message,state)
+        await saveUser(message, state)
     except Exception as e:
         logging.error(f'Error in 2fa. {e}')
         await removeSessionFile(user.phoneNumber)
         await state.finish()
-        await message.answer("Непридвиденная ошибка!",reply_markup=keyboardMain)
+        await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
 
-async def saveUser(message: types.Message,state: FSMContext):
+
+async def saveUser(message: types.Message, state: FSMContext):
     try:
         async with aiosqlite.connect("masslook.db") as db:
             cursor = await db.cursor()
             await cursor.execute("INSERT INTO users (phoneNumber, app_id, app_hash, proxy) VALUES(?,?,?,?);",
-                             (user.phoneNumber, user.api_id, user.api_hash, user.proxy))
+                                 (user.phoneNumber, user.api_id, user.api_hash, user.proxy))
             user_id = cursor.lastrowid
             await db.commit()
         await client.disconnect()
-        StoryWatcher(user_id, user.phoneNumber, user.api_id, user.api_hash,user.proxy, loop)
+        StoryWatcher(user_id, user.phoneNumber, user.api_id,
+                     user.api_hash, user.proxy, loop)
         await message.answer("Готово!", reply_markup=keyboardMain)
         await state.finish()
     except aiosqlite.IntegrityError:
@@ -376,6 +418,7 @@ async def saveUser(message: types.Message,state: FSMContext):
         await message.answer("Непридвиденная ошибка!", reply_markup=keyboardMain)
         await state.finish()
 
+
 async def removeSessionFile(sessionName):
     try:
         os.remove(f"sessions/{sessionName}.session")
@@ -383,10 +426,10 @@ async def removeSessionFile(sessionName):
     except:
         pass
 
+
 def main(loop_):
     global loop
     loop = loop_
     asyncio.set_event_loop(loop)
     dp.middleware.setup(AdminMiddleware())
-    executor.start_polling(dp, skip_updates=True,loop=loop)
-    
+    executor.start_polling(dp, skip_updates=True, loop=loop)
